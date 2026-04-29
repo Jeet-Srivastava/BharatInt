@@ -1,0 +1,40 @@
+"""Domain constants — enums, thresholds, and business rules."""
+
+from enum import Enum
+
+
+class DiscrepancyType(str, Enum):
+    EXACT_MATCH = "EXACT_MATCH"
+    NEAR_MATCH = "NEAR_MATCH"
+    UNDERPAYMENT = "UNDERPAYMENT"
+    OVERPAYMENT = "OVERPAYMENT"
+    UNMATCHED_WORK = "UNMATCHED_WORK"
+    UNMATCHED_PAYMENT = "UNMATCHED_PAYMENT"
+    DUPLICATE_PAYMENT = "DUPLICATE_PAYMENT"
+
+
+class Priority(str, Enum):
+    P0 = "P0"
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+
+
+class ReviewStatus(str, Enum):
+    AMBIGUOUS_RATE = "AMBIGUOUS_RATE"
+    NO_RATE_FOUND = "NO_RATE_FOUND"
+    UNRESOLVABLE_PHONE = "UNRESOLVABLE_PHONE"
+    TIMEZONE_CORRECTED = "TIMEZONE_CORRECTED"
+    IMPOSSIBLE_HOURS = "IMPOSSIBLE_HOURS"
+    LOW_VALUE_TRANSFER = "LOW_VALUE_TRANSFER"
+    VENDOR_B_ANOMALY = "VENDOR_B_ANOMALY"
+    PRECISION_BUG = "PRECISION_BUG"
+    LARGE_DISCREPANCY = "LARGE_DISCREPANCY"
+    DUPLICATE_PAYMENT_CANDIDATE = "DUPLICATE_PAYMENT_CANDIDATE"
+
+
+# ── Thresholds ──────────────────────────────────────────────
+MAX_HOURS_PER_SHIFT: int = 16
+LOW_VALUE_PAISE_THRESHOLD: int = 50000        # ₹500 in paise
+NEAR_MATCH_THRESHOLD: float = 0.005           # 0.5%
+LARGE_DISCREPANCY_THRESHOLD: float = 0.05     # 5%
