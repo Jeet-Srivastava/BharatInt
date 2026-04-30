@@ -12,6 +12,7 @@ from app.services.audit import (
     build_shift_details,
     build_transfer_details,
     fetch_worker_record,
+    get_latest_completed_run_id,
     summarise_identity_confidence,
 )
 
@@ -26,8 +27,9 @@ async def list_workers(
     session: AsyncSession = Depends(get_db)
 ):
     """List all workers, searchable by name or phone."""
+    latest_run_id = await get_latest_completed_run_id(session)
     where = "1=1"
-    params = {}
+    params = {'latest_run_id': latest_run_id}
 
     if search:
         where = "(LOWER(w.name) LIKE :search OR w.phone LIKE :search)"
@@ -52,7 +54,9 @@ async def list_workers(
             LEFT JOIN (
                 SELECT worker_id, COUNT(*) as cnt
                 FROM reconciliation
-                WHERE needs_manual_review = TRUE AND resolved = FALSE
+                WHERE pipeline_run_id = :latest_run_id
+                  AND needs_manual_review = TRUE
+                  AND COALESCE(resolved, FALSE) = FALSE
                 GROUP BY worker_id
             ) review_counts ON w.worker_id = review_counts.worker_id
             WHERE {where}
@@ -99,6 +103,7 @@ async def get_worker(worker_id: str, session: AsyncSession = Depends(get_db)):
 @router.get("/{worker_id}/audit-trail")
 async def get_worker_audit_trail(worker_id: str, session: AsyncSession = Depends(get_db)):
     """Get complete audit trail: shifts, transfers, reconciliation per period."""
+    latest_run_id = await get_latest_completed_run_id(session)
 
     # Worker info
     worker = await fetch_worker_record(session, worker_id)
@@ -118,9 +123,10 @@ async def get_worker_audit_trail(worker_id: str, session: AsyncSession = Depends
                    review_reason, priority, confidence_score, resolved
             FROM reconciliation
             WHERE worker_id = :wid
+              AND pipeline_run_id = :pipeline_run_id
             ORDER BY billing_period DESC
         """),
-        {'wid': worker_id}
+        {'wid': worker_id, 'pipeline_run_id': latest_run_id}
     )
     reconciliation = [
         {
@@ -134,7 +140,7 @@ async def get_worker_audit_trail(worker_id: str, session: AsyncSession = Depends
             'review_reason': r.review_reason,
             'priority': r.priority,
             'confidence_score': float(r.confidence_score) if r.confidence_score else None,
-            'resolved': r.resolved,
+            'resolved': bool(r.resolved),
         }
         for r in recon_result.fetchall()
     ]

@@ -28,6 +28,20 @@ async def fetch_worker_record(session: AsyncSession, worker_id: str):
     return result.fetchone()
 
 
+async def get_latest_completed_run_id(session: AsyncSession):
+    """Return the most recent completed pipeline run id."""
+    result = await session.execute(
+        text("""
+            SELECT run_id
+            FROM pipeline_runs
+            WHERE status = 'completed'
+            ORDER BY started_at DESC
+            LIMIT 1
+        """)
+    )
+    return result.scalar()
+
+
 async def build_rate_context(session: AsyncSession, worker_id: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build worker/rate dataframes compatible with the pipeline rate resolver."""
     worker = await fetch_worker_record(session, worker_id)

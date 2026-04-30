@@ -360,12 +360,12 @@ async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session
                 INSERT INTO reconciliation
                     (id, worker_id, billing_period, expected_paise, actual_paise,
                      delta_paise, discrepancy_type, needs_manual_review,
-                     review_reason, priority, confidence_score,
+                     review_reason, priority, confidence_score, resolved,
                      pipeline_run_id)
                 VALUES
                     (gen_random_uuid(), :worker_id, :billing_period, :expected,
                      :actual, :delta, :disc_type, :needs_review,
-                     :review_reason, :priority, :confidence,
+                     :review_reason, :priority, :confidence, FALSE,
                      :pipeline_run_id)
                 ON CONFLICT (worker_id, billing_period, pipeline_run_id) DO UPDATE SET
                     expected_paise = EXCLUDED.expected_paise,
@@ -375,7 +375,8 @@ async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session
                     needs_manual_review = EXCLUDED.needs_manual_review,
                     review_reason = EXCLUDED.review_reason,
                     priority = EXCLUDED.priority,
-                    confidence_score = EXCLUDED.confidence_score
+                    confidence_score = EXCLUDED.confidence_score,
+                    resolved = COALESCE(reconciliation.resolved, FALSE)
             """),
             {
                 'worker_id': worker_id,

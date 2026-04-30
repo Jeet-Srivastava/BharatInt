@@ -1,14 +1,13 @@
 """Celery worker — async pipeline orchestration."""
 
 import logging
-import uuid
-from datetime import datetime, timezone
 
 from celery import Celery
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.config import REDIS_URL, DATABASE_URL_SYNC, DATA_DIR
+from app.core.config import REDIS_URL, DATABASE_URL, DATABASE_URL_SYNC
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +45,12 @@ def run_pipeline_task(self, run_id: str):
         process_supervisor_logs, process_bank_transfers
     )
     from app.pipeline.reconcile import run_reconciliation
-    from app.database import AsyncSessionLocal
 
     async def _run():
-        async with AsyncSessionLocal() as session:
+        async_engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+        async_session_factory = async_sessionmaker(async_engine, expire_on_commit=False)
+
+        async with async_session_factory() as session:
             try:
                 # 1. Update status to running
                 await session.execute(
@@ -113,18 +114,22 @@ def run_pipeline_task(self, run_id: str):
             except Exception as e:
                 logger.error(f"Pipeline {run_id}: FAILED — {str(e)}")
                 await session.rollback()
-                await session.execute(
-                    text("""
-                        UPDATE pipeline_runs SET
-                            status = 'failed',
-                            completed_at = NOW(),
-                            error_message = :error
-                        WHERE run_id = :run_id
-                    """),
-                    {'run_id': run_id, 'error': str(e)}
-                )
-                await session.commit()
+
+                async with async_session_factory() as failure_session:
+                    await failure_session.execute(
+                        text("""
+                            UPDATE pipeline_runs SET
+                                status = 'failed',
+                                completed_at = NOW(),
+                                error_message = :error
+                            WHERE run_id = :run_id
+                        """),
+                        {'run_id': run_id, 'error': str(e)}
+                    )
+                    await failure_session.commit()
                 raise
+            finally:
+                await async_engine.dispose()
 
     asyncio.run(_run())
     return {'run_id': run_id, 'status': 'completed'}

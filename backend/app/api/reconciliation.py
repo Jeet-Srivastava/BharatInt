@@ -8,7 +8,12 @@ from typing import Optional
 
 from app.database import get_db
 from app.schemas.reconciliation import ReconciliationResolveRequest
-from app.services.audit import build_confidence_breakdown, build_shift_details, build_transfer_details
+from app.services.audit import (
+    build_confidence_breakdown,
+    build_shift_details,
+    build_transfer_details,
+    get_latest_completed_run_id,
+)
 
 router = APIRouter(prefix="/api/v1/reconciliation", tags=["reconciliation"])
 
@@ -25,8 +30,11 @@ async def list_reconciliation(
     session: AsyncSession = Depends(get_db)
 ):
     """List reconciliation records with filters and pagination."""
+    latest_run_id = await get_latest_completed_run_id(session)
     where_clauses = ["1=1"]
-    params = {}
+    params = {'latest_run_id': latest_run_id}
+
+    where_clauses.append("r.pipeline_run_id = :latest_run_id")
 
     if period:
         where_clauses.append("r.billing_period = :period")
@@ -41,7 +49,7 @@ async def list_reconciliation(
         where_clauses.append("r.needs_manual_review = :needs_review")
         params['needs_review'] = needs_review
     if resolved is not None:
-        where_clauses.append("r.resolved = :resolved")
+        where_clauses.append("COALESCE(r.resolved, FALSE) = :resolved")
         params['resolved'] = resolved
 
     where = " AND ".join(where_clauses)
@@ -91,7 +99,7 @@ async def list_reconciliation(
             'review_reason': row.review_reason,
             'priority': row.priority,
             'confidence_score': float(row.confidence_score) if row.confidence_score else None,
-            'resolved': row.resolved,
+            'resolved': bool(row.resolved),
             'resolved_by': row.resolved_by,
             'resolved_at': row.resolved_at.isoformat() if row.resolved_at else None,
             'resolution_notes': row.resolution_notes,
@@ -139,7 +147,7 @@ async def get_reconciliation(record_id: str, session: AsyncSession = Depends(get
         'review_reason': row.review_reason,
         'priority': row.priority,
         'confidence_score': float(row.confidence_score) if row.confidence_score else None,
-        'resolved': row.resolved,
+        'resolved': bool(row.resolved),
         'resolved_by': row.resolved_by,
         'resolution_notes': row.resolution_notes,
         'shifts': shifts,

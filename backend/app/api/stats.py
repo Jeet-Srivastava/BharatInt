@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
+from app.services.audit import get_latest_completed_run_id
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
@@ -16,10 +17,11 @@ async def get_summary(
     session: AsyncSession = Depends(get_db)
 ):
     """Dashboard summary: totals, review counts by priority, discrepancy breakdown."""
-    where = "1=1"
-    params = {}
+    latest_run_id = await get_latest_completed_run_id(session)
+    where = "r.pipeline_run_id = :latest_run_id"
+    params = {'latest_run_id': latest_run_id}
     if period:
-        where = "r.billing_period = :period"
+        where = f"{where} AND r.billing_period = :period"
         params['period'] = period
 
     # Totals
@@ -30,8 +32,8 @@ async def get_summary(
                 COALESCE(SUM(r.actual_paise), 0) as total_actual,
                 COALESCE(SUM(r.delta_paise), 0) as net_delta,
                 COUNT(*) as total_records,
-                COUNT(*) FILTER (WHERE r.resolved = TRUE) as resolved_count,
-                COUNT(*) FILTER (WHERE r.needs_manual_review = TRUE AND r.resolved = FALSE) as unresolved_count
+                COUNT(*) FILTER (WHERE COALESCE(r.resolved, FALSE) = TRUE) as resolved_count,
+                COUNT(*) FILTER (WHERE r.needs_manual_review = TRUE AND COALESCE(r.resolved, FALSE) = FALSE) as unresolved_count
             FROM reconciliation r
             WHERE {where}
         """),
@@ -44,7 +46,7 @@ async def get_summary(
         text(f"""
             SELECT r.priority, COUNT(*) as cnt
             FROM reconciliation r
-            WHERE {where} AND r.needs_manual_review = TRUE AND r.resolved = FALSE
+            WHERE {where} AND r.needs_manual_review = TRUE AND COALESCE(r.resolved, FALSE) = FALSE
             GROUP BY r.priority
             ORDER BY r.priority
         """),
@@ -84,9 +86,11 @@ async def get_summary(
                    COALESCE(SUM(r.actual_paise), 0) as actual,
                    COALESCE(SUM(r.delta_paise), 0) as delta
             FROM reconciliation r
+            WHERE r.pipeline_run_id = :latest_run_id
             GROUP BY r.billing_period
             ORDER BY r.billing_period
-        """)
+        """),
+        {'latest_run_id': latest_run_id}
     )
     period_breakdown = [
         {
