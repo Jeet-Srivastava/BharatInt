@@ -367,18 +367,18 @@
   - [DONE] STEP-048b: Every identity resolution logs: log_id, raw_phone, normalised_phone, worker_id, confidence
   - [DONE] STEP-048c: Every rate resolution logs: log_id, worker_id, work_date, rate_row_id, rate_paise, status
 
-- [ ] STEP-049: Write remaining backend unit tests
-  - [ ] STEP-049a: test_impossible_hours: log with 450h → excluded from expected, flagged
-  - [ ] STEP-049b: test_reconciliation_full: end-to-end reconciliation with known inputs and expected outputs
-  - [ ] STEP-049c: test_duplicate_payment_detection: same worker, same period, same amount twice → DUPLICATE_PAYMENT flag
-  - [ ] STEP-049d: test_unmatched_work: shifts with no transfers → UNMATCHED_WORK
-  - [ ] STEP-049e: test_unmatched_payment: transfer with no shifts → UNMATCHED_PAYMENT
-  - [ ] STEP-049f: pytest must pass with 0 failures before this step is DONE
+- [DONE] STEP-049: Write remaining backend unit tests
+  - [DONE] STEP-049a: test_impossible_hours: log with 450h → excluded from expected, flagged
+  - [DONE] STEP-049b: test_reconciliation_full: end-to-end reconciliation with known inputs and expected outputs
+  - [DONE] STEP-049c: test_duplicate_payment_detection: same worker, same period, same amount twice → DUPLICATE_PAYMENT flag
+  - [DONE] STEP-049d: test_unmatched_work: shifts with no transfers → UNMATCHED_WORK
+  - [DONE] STEP-049e: test_unmatched_payment: transfer with no shifts → UNMATCHED_PAYMENT
+  - [DONE] STEP-049f: pytest must pass with 0 failures before this step is DONE
 
-- [ ] STEP-050: Final review — read through every file, check for float usage in monetary calculations
-  - [ ] STEP-050a: Grep entire codebase for "float" near monetary fields — must be zero occurrences
-  - [ ] STEP-050b: Grep for "amount" or "paise" or "rate" — all must use Decimal or int, never float
-  - [ ] STEP-050c: Confirm all money columns in DB are BIGINT (not NUMERIC, not FLOAT)
+- [DONE] STEP-050: Final review — read through every file, check for float usage in monetary calculations
+  - [DONE] STEP-050a: Grep entire codebase for "float" near monetary fields — must be zero occurrences
+  - [DONE] STEP-050b: Grep for "amount" or "paise" or "rate" — all must use Decimal or int, never float
+  - [DONE] STEP-050c: Confirm all money columns in DB are BIGINT (not NUMERIC, not FLOAT)
 
 ---
 
