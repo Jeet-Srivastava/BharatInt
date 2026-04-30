@@ -50,6 +50,8 @@ export default function WorkerDrilldown() {
   const shifts = data.shifts || [];
   const transfers = data.transfers || [];
   const reconciliation = data.reconciliation || [];
+  const identityConfidence = formatConfidence(worker.identity_confidence);
+  const identityConfidenceFloor = formatConfidence(worker.identity_confidence_floor);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -94,6 +96,13 @@ export default function WorkerDrilldown() {
                 <span className="text-slate-500">Registered:</span>
                 <span className="text-white ml-1">{worker.registered_on}</span>
               </div>
+              <div className="text-xs">
+                <span className="text-slate-500">Identity Confidence:</span>
+                <span className={`ml-1 ${identityConfidence.color}`}>{identityConfidence.text}</span>
+                {worker.identity_confidence_floor !== null && worker.identity_confidence_floor !== undefined && (
+                  <span className="text-slate-500 ml-2">floor {identityConfidenceFloor.text}</span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -117,6 +126,7 @@ export default function WorkerDrilldown() {
                   <th>Priority</th>
                   <th>Confidence</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -142,6 +152,11 @@ export default function WorkerDrilldown() {
                         ) : (
                           <span className="badge bg-slate-500/20 text-slate-400">OK</span>
                         )}
+                      </td>
+                      <td>
+                        <Link href={`/review?recordId=${r.id}`} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                          Review →
+                        </Link>
                       </td>
                     </tr>
                   );
@@ -169,6 +184,8 @@ export default function WorkerDrilldown() {
                   <th>Hours</th>
                   <th>Vendor</th>
                   <th>Supervisor</th>
+                  <th>Rate</th>
+                  <th>Expected</th>
                   <th>Confidence</th>
                   <th>Flags</th>
                 </tr>
@@ -183,6 +200,12 @@ export default function WorkerDrilldown() {
                       <td className={`text-xs font-mono ${s.hours_anomaly ? 'text-red-400 font-bold' : ''}`}>{s.hours}h</td>
                       <td className="text-xs">{s.vendor_app}</td>
                       <td className="text-xs">{s.supervisor_id}</td>
+                      <td className="text-xs font-mono">
+                        {s.rate_paise ? formatPaise(s.rate_paise) : s.rate_status}
+                      </td>
+                      <td className="text-xs font-mono text-emerald-400">
+                        {s.expected_paise ? formatPaise(s.expected_paise) : '—'}
+                      </td>
                       <td className={`text-xs ${conf.color}`}>{conf.text}</td>
                       <td>
                         <div className="flex gap-1 flex-wrap">
@@ -228,7 +251,10 @@ export default function WorkerDrilldown() {
                     <td className="text-xs font-mono text-emerald-400">{formatPaise(t.amount_paise)}</td>
                     <td className="text-xs font-mono">****{t.account_last4}</td>
                     <td>
-                      {t.precision_bug && <span className="badge bg-amber-500/20 text-amber-400 text-[10px]">Precision Bug</span>}
+                      <div className="flex gap-1 flex-wrap">
+                        {t.precision_bug && <span className="badge bg-amber-500/20 text-amber-400 text-[10px]">Precision Bug</span>}
+                        {t.low_value && <span className="badge bg-red-500/20 text-red-400 text-[10px]">Low Value</span>}
+                      </div>
                     </td>
                   </tr>
                 ))}

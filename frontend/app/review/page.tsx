@@ -1,21 +1,37 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getReconciliation, getReconciliationDetail, resolveReconciliation } from '@/lib/api';
 import { formatPaise, formatDelta, formatPeriod, getPriorityBadge, getTypeBadge, formatConfidence } from '@/lib/formatters';
 
-export default function ReviewQueue() {
+function parseBooleanFilter(value: string | null): boolean | undefined {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+type ReviewFiltersState = {
+  period: string;
+  priority: string;
+  type: string;
+  needs_review: boolean | undefined;
+  resolved: boolean | undefined;
+};
+
+function ReviewQueueContent() {
+  const searchParams = useSearchParams();
   const [records, setRecords] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({
-    period: '',
-    priority: '',
-    type: '',
-    needs_review: true as boolean | undefined,
-    resolved: false as boolean | undefined,
-  });
+  const [filters, setFilters] = useState<ReviewFiltersState>(() => ({
+    period: searchParams.get('period') || '',
+    priority: searchParams.get('priority') || '',
+    type: searchParams.get('type') || '',
+    needs_review: parseBooleanFilter(searchParams.get('needs_review')) ?? true,
+    resolved: parseBooleanFilter(searchParams.get('resolved')) ?? false,
+  }));
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [resolveNotes, setResolveNotes] = useState('');
@@ -45,17 +61,55 @@ export default function ReviewQueue() {
     fetchRecords();
   }, [fetchRecords]);
 
-  const openDrawer = async (record: any) => {
+  const openDrawerById = useCallback(async (recordId: string) => {
     setDrawerLoading(true);
     setSelectedRecord(null);
     try {
-      const res = await getReconciliationDetail(record.id);
+      const res = await getReconciliationDetail(recordId);
       setSelectedRecord(res.data);
     } catch {
-      setSelectedRecord(record);
+      setSelectedRecord(null);
     }
     setDrawerLoading(false);
+  }, []);
+
+  const openDrawer = async (record: any) => {
+    await openDrawerById(record.id);
   };
+
+  useEffect(() => {
+    const period = searchParams.get('period') || '';
+    const priority = searchParams.get('priority') || '';
+    const type = searchParams.get('type') || '';
+    const needsReview = parseBooleanFilter(searchParams.get('needs_review'));
+    const resolved = parseBooleanFilter(searchParams.get('resolved'));
+
+    setFilters((current) => {
+      const next = {
+        period,
+        priority,
+        type,
+        needs_review: needsReview ?? true,
+        resolved: resolved ?? false,
+      };
+
+      const unchanged =
+        current.period === next.period &&
+        current.priority === next.priority &&
+        current.type === next.type &&
+        current.needs_review === next.needs_review &&
+        current.resolved === next.resolved;
+
+      return unchanged ? current : next;
+    });
+    setPage(1);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const recordId = searchParams.get('recordId');
+    if (!recordId) return;
+    openDrawerById(recordId);
+  }, [openDrawerById, searchParams]);
 
   const handleResolve = async () => {
     if (!selectedRecord || !resolveBy) return;
@@ -92,7 +146,10 @@ export default function ReviewQueue() {
         <select
           className="select-field"
           value={filters.period}
-          onChange={(e) => setFilters({ ...filters, period: e.target.value })}
+          onChange={(e) => {
+            setPage(1);
+            setFilters({ ...filters, period: e.target.value });
+          }}
         >
           <option value="">All Periods</option>
           <option value="2025-01">Jan 2025</option>
@@ -103,7 +160,10 @@ export default function ReviewQueue() {
         <select
           className="select-field"
           value={filters.priority}
-          onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+          onChange={(e) => {
+            setPage(1);
+            setFilters({ ...filters, priority: e.target.value });
+          }}
         >
           <option value="">All Priorities</option>
           <option value="P0">P0 Critical</option>
@@ -115,7 +175,10 @@ export default function ReviewQueue() {
         <select
           className="select-field"
           value={filters.type}
-          onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+          onChange={(e) => {
+            setPage(1);
+            setFilters({ ...filters, type: e.target.value });
+          }}
         >
           <option value="">All Types</option>
           <option value="UNDERPAYMENT">Underpayment</option>
@@ -132,6 +195,7 @@ export default function ReviewQueue() {
           value={filters.resolved === undefined ? '' : filters.resolved ? 'true' : 'false'}
           onChange={(e) => {
             const val = e.target.value;
+            setPage(1);
             setFilters({ ...filters, resolved: val === '' ? undefined : val === 'true' });
           }}
         >
@@ -142,7 +206,10 @@ export default function ReviewQueue() {
 
         <button
           className="btn btn-ghost text-xs"
-          onClick={() => setFilters({ period: '', priority: '', type: '', needs_review: undefined, resolved: undefined })}
+          onClick={() => {
+            setPage(1);
+            setFilters({ period: '', priority: '', type: '', needs_review: undefined, resolved: undefined });
+          }}
         >
           Clear Filters
         </button>
@@ -324,6 +391,41 @@ export default function ReviewQueue() {
                   </div>
                 )}
 
+                {/* Confidence Breakdown */}
+                {selectedRecord.confidence_breakdown && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Confidence Breakdown</h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="bg-[#0B1121] rounded-lg p-3">
+                        <p className="text-slate-500">Identity</p>
+                        <p className="text-white font-semibold mt-1">
+                          {formatConfidence(selectedRecord.confidence_breakdown.identity_score).text}
+                        </p>
+                        <p className="text-slate-500 mt-1">Weight 40%</p>
+                      </div>
+                      <div className="bg-[#0B1121] rounded-lg p-3">
+                        <p className="text-slate-500">Rate Resolution</p>
+                        <p className="text-white font-semibold mt-1">{selectedRecord.confidence_breakdown.rate_status}</p>
+                        <p className="text-slate-500 mt-1">Weight 30%</p>
+                      </div>
+                      <div className="bg-[#0B1121] rounded-lg p-3">
+                        <p className="text-slate-500">Timezone</p>
+                        <p className="text-white font-semibold mt-1">
+                          {selectedRecord.confidence_breakdown.tz_corrected ? 'Corrected' : 'Clean'}
+                        </p>
+                        <p className="text-slate-500 mt-1">Weight 20%</p>
+                      </div>
+                      <div className="bg-[#0B1121] rounded-lg p-3">
+                        <p className="text-slate-500">Hours</p>
+                        <p className="text-white font-semibold mt-1">
+                          {selectedRecord.confidence_breakdown.hours_anomaly ? 'Anomaly Flagged' : 'Clean'}
+                        </p>
+                        <p className="text-slate-500 mt-1">Weight 10%</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Shifts */}
                 {selectedRecord.shifts?.length > 0 && (
                   <div>
@@ -331,14 +433,25 @@ export default function ReviewQueue() {
                     <div className="space-y-1.5">
                       {selectedRecord.shifts.map((s: any) => (
                         <div key={s.log_id} className="bg-[#0B1121] rounded-lg p-3 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-white font-medium">{s.log_id}</span>
-                            <span className="text-slate-400">{s.work_date}</span>
+                          <div className="flex justify-between gap-3">
+                            <div>
+                              <span className="text-white font-medium">{s.log_id}</span>
+                              <div className="flex gap-4 mt-1 text-slate-500">
+                                <span>{s.hours}h</span>
+                                <span>{s.vendor_app}</span>
+                                <span>Supervisor: {s.supervisor_id}</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-400">{s.work_date}</span>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-blue-400 font-mono">{s.rate_paise ? formatPaise(s.rate_paise) : s.rate_status}</p>
+                                <p className="text-emerald-400 font-mono">{s.expected_paise ? formatPaise(s.expected_paise) : 'No expected wage'}</p>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex gap-4 mt-1 text-slate-500">
-                            <span>{s.hours}h</span>
-                            <span>{s.vendor_app}</span>
-                            <span>Supervisor: {s.supervisor_id}</span>
+                          <div className="flex gap-4 mt-2 text-slate-500">
+                            <span>Identity: {formatConfidence(s.identity_confidence).text}</span>
                             {s.tz_corrected && <span className="text-amber-400">TZ Corrected</span>}
                             {s.hours_anomaly && <span className="text-red-400">Anomaly</span>}
                           </div>
@@ -363,6 +476,7 @@ export default function ReviewQueue() {
                             <span>{t.transfer_date}</span>
                             <span>Acc: ****{t.account_last4}</span>
                             {t.precision_bug && <span className="text-amber-400">Precision Bug</span>}
+                            {t.low_value && <span className="text-red-400">Low Value</span>}
                           </div>
                         </div>
                       ))}
@@ -416,5 +530,13 @@ export default function ReviewQueue() {
         </>
       )}
     </div>
+  );
+}
+
+export default function ReviewQueue() {
+  return (
+    <Suspense fallback={<div className="glass-card p-10 text-center text-sm text-slate-400">Loading review queue...</div>}>
+      <ReviewQueueContent />
+    </Suspense>
   );
 }

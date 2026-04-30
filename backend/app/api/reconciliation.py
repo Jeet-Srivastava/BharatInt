@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.schemas.reconciliation import ReconciliationResolveRequest
+from app.services.audit import build_confidence_breakdown, build_shift_details, build_transfer_details
 
 router = APIRouter(prefix="/api/v1/reconciliation", tags=["reconciliation"])
 
@@ -117,53 +118,9 @@ async def get_reconciliation(record_id: str, session: AsyncSession = Depends(get
     if not row:
         return JSONResponse(status_code=404, content={"error": "Record not found"})
 
-    # Get related shifts
-    shifts_result = await session.execute(
-        text("""
-            SELECT log_id, work_date, hours, vendor_app, tz_corrected,
-                   hours_anomaly, identity_confidence, supervisor_id
-            FROM shift_logs
-            WHERE worker_id = :worker_id
-              AND to_char(work_date, 'YYYY-MM') = :period
-            ORDER BY work_date
-        """),
-        {'worker_id': row.worker_id, 'period': row.billing_period}
-    )
-    shifts = [
-        {
-            'log_id': s.log_id,
-            'work_date': s.work_date.isoformat() if s.work_date else None,
-            'hours': float(s.hours),
-            'vendor_app': s.vendor_app,
-            'tz_corrected': s.tz_corrected,
-            'hours_anomaly': s.hours_anomaly,
-            'identity_confidence': float(s.identity_confidence) if s.identity_confidence else None,
-            'supervisor_id': s.supervisor_id,
-        }
-        for s in shifts_result.fetchall()
-    ]
-
-    # Get related transfers
-    transfers_result = await session.execute(
-        text("""
-            SELECT utr, amount_paise, transfer_date, precision_bug, account_last4
-            FROM bank_transfers
-            WHERE worker_id = :worker_id
-              AND billing_period = :period
-            ORDER BY transfer_date
-        """),
-        {'worker_id': row.worker_id, 'period': row.billing_period}
-    )
-    transfers = [
-        {
-            'utr': t.utr,
-            'amount_paise': t.amount_paise,
-            'transfer_date': t.transfer_date.isoformat() if t.transfer_date else None,
-            'precision_bug': t.precision_bug,
-            'account_last4': t.account_last4,
-        }
-        for t in transfers_result.fetchall()
-    ]
+    shifts = await build_shift_details(session, row.worker_id, row.billing_period)
+    transfers = await build_transfer_details(session, row.worker_id, row.billing_period)
+    confidence_breakdown = build_confidence_breakdown(shifts)
 
     return {
         'id': str(row.id),
@@ -187,6 +144,7 @@ async def get_reconciliation(record_id: str, session: AsyncSession = Depends(get
         'resolution_notes': row.resolution_notes,
         'shifts': shifts,
         'transfers': transfers,
+        'confidence_breakdown': confidence_breakdown,
     }
 
 

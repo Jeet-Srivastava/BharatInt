@@ -7,6 +7,13 @@ from starlette.responses import JSONResponse
 from typing import Optional
 
 from app.database import get_db
+from app.services.audit import (
+    build_confidence_breakdown,
+    build_shift_details,
+    build_transfer_details,
+    fetch_worker_record,
+    summarise_identity_confidence,
+)
 
 router = APIRouter(prefix="/api/v1/workers", tags=["workers"])
 
@@ -74,11 +81,7 @@ async def list_workers(
 @router.get("/{worker_id}")
 async def get_worker(worker_id: str, session: AsyncSession = Depends(get_db)):
     """Get worker detail."""
-    result = await session.execute(
-        text("SELECT * FROM workers WHERE worker_id = :wid"),
-        {'wid': worker_id}
-    )
-    row = result.fetchone()
+    row = await fetch_worker_record(session, worker_id)
     if not row:
         return JSONResponse(status_code=404, content={"error": "Worker not found"})
 
@@ -98,64 +101,14 @@ async def get_worker_audit_trail(worker_id: str, session: AsyncSession = Depends
     """Get complete audit trail: shifts, transfers, reconciliation per period."""
 
     # Worker info
-    worker_result = await session.execute(
-        text("SELECT * FROM workers WHERE worker_id = :wid"),
-        {'wid': worker_id}
-    )
-    worker = worker_result.fetchone()
+    worker = await fetch_worker_record(session, worker_id)
     if not worker:
         return JSONResponse(status_code=404, content={"error": "Worker not found"})
 
-    # All shifts
-    shifts_result = await session.execute(
-        text("""
-            SELECT log_id, work_date, hours, vendor_app, supervisor_id,
-                   tz_corrected, hours_anomaly, identity_confidence,
-                   raw_worker_name, raw_worker_phone
-            FROM shift_logs
-            WHERE worker_id = :wid
-            ORDER BY work_date DESC
-        """),
-        {'wid': worker_id}
-    )
-    shifts = [
-        {
-            'log_id': s.log_id,
-            'work_date': s.work_date.isoformat() if s.work_date else None,
-            'hours': float(s.hours),
-            'vendor_app': s.vendor_app,
-            'supervisor_id': s.supervisor_id,
-            'tz_corrected': s.tz_corrected,
-            'hours_anomaly': s.hours_anomaly,
-            'identity_confidence': float(s.identity_confidence) if s.identity_confidence else None,
-            'raw_worker_name': s.raw_worker_name,
-            'raw_worker_phone': s.raw_worker_phone,
-        }
-        for s in shifts_result.fetchall()
-    ]
-
-    # All transfers
-    transfers_result = await session.execute(
-        text("""
-            SELECT utr, amount_paise, transfer_date, billing_period,
-                   precision_bug, account_last4
-            FROM bank_transfers
-            WHERE worker_id = :wid
-            ORDER BY transfer_date DESC
-        """),
-        {'wid': worker_id}
-    )
-    transfers = [
-        {
-            'utr': t.utr,
-            'amount_paise': t.amount_paise,
-            'transfer_date': t.transfer_date.isoformat() if t.transfer_date else None,
-            'billing_period': t.billing_period,
-            'precision_bug': t.precision_bug,
-            'account_last4': t.account_last4,
-        }
-        for t in transfers_result.fetchall()
-    ]
+    shifts = await build_shift_details(session, worker_id)
+    transfers = await build_transfer_details(session, worker_id)
+    identity_summary = summarise_identity_confidence(shifts)
+    confidence_breakdown = build_confidence_breakdown(shifts)
 
     # Reconciliation per period
     recon_result = await session.execute(
@@ -195,8 +148,11 @@ async def get_worker_audit_trail(worker_id: str, session: AsyncSession = Depends
             'role': worker.role,
             'seniority': worker.seniority,
             'registered_on': worker.registered_on.isoformat() if worker.registered_on else None,
+            'identity_confidence': identity_summary['average'],
+            'identity_confidence_floor': identity_summary['minimum'],
         },
         'shifts': shifts,
         'transfers': transfers,
         'reconciliation': reconciliation,
+        'confidence_breakdown': confidence_breakdown,
     }
