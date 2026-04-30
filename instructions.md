@@ -349,18 +349,18 @@
 
 ## PHASE 15 — HARDENING
 
-- [ ] STEP-046: Add database indexes
-  - [ ] STEP-046a: Index on shift_logs(worker_id, work_date)
-  - [ ] STEP-046b: Index on shift_logs(billing_period) — add derived billing_period column
-  - [ ] STEP-046c: Index on bank_transfers(worker_id, billing_period)
-  - [ ] STEP-046d: Index on reconciliation(needs_manual_review, priority)
-  - [ ] STEP-046e: Index on reconciliation(worker_id, billing_period)
+- [DONE] STEP-046: Add database indexes
+  - [DONE] STEP-046a: Index on shift_logs(worker_id, work_date)
+  - [DONE] STEP-046b: Index on shift_logs(billing_period) — add derived billing_period column
+  - [DONE] STEP-046c: Index on bank_transfers(worker_id, billing_period)
+  - [DONE] STEP-046d: Index on reconciliation(needs_manual_review, priority)
+  - [DONE] STEP-046e: Index on reconciliation(worker_id, billing_period)
 
-- [ ] STEP-047: Add data contract enforcement
-  - [ ] STEP-047a: On ingest, validate CSV schema (column names, no extra/missing columns) — halt if validation fails
-  - [ ] STEP-047b: Add DB constraint: wage_rates uniqueness — prevent duplicate (role, state, seniority, effective_from) rows
-  - [ ] STEP-047c: Add DB CHECK constraint: shift_logs.hours > 0 AND shift_logs.hours <= 16 (allow anomaly rows via separate flag, not by allowing 450)
-  - [ ] STEP-047d: Add DB CHECK constraint: bank_transfers.amount_paise > 0
+- [DONE] STEP-047: Add data contract enforcement
+  - [DONE] STEP-047a: On ingest, validate CSV schema (column names, no extra/missing columns) — halt if validation fails
+  - [DONE] STEP-047b: Add DB constraint: wage_rates uniqueness — prevent duplicate (role, state, seniority, effective_from) rows
+  - [DONE] STEP-047c: Add DB CHECK constraint: shift_logs.hours > 0 AND shift_logs.hours <= 16 (allow anomaly rows via separate flag, not by allowing 450)
+  - [DONE] STEP-047d: Add DB CHECK constraint: bank_transfers.amount_paise > 0
 
 - [ ] STEP-048: Add structured logging
   - [ ] STEP-048a: Every pipeline step logs: step_name, rows_processed, errors_count, duration_ms
