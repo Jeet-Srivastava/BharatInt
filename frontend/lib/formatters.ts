@@ -3,10 +3,37 @@
  * All monetary values are in paise (1 INR = 100 paise).
  */
 
+function splitPaise(paise: number): { sign: string; rupees: string; fraction: string } {
+  const negative = paise < 0;
+  const absolutePaise = Math.abs(Math.trunc(paise));
+  const rupees = Math.floor(absolutePaise / 100).toLocaleString('en-IN');
+  const fraction = String(absolutePaise % 100).padStart(2, '0');
+
+  return {
+    sign: negative ? '-' : '',
+    rupees,
+    fraction,
+  };
+}
+
 export function formatPaise(paise: number | null | undefined): string {
   if (paise === null || paise === undefined) return '₹0.00';
-  const inr = paise / 100;
-  return `₹${inr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const { sign, rupees, fraction } = splitPaise(paise);
+  return `${sign}₹${rupees}.${fraction}`;
+}
+
+export function formatCompactPaise(paise: number | null | undefined): string {
+  if (paise === null || paise === undefined) return '₹0';
+
+  const negative = paise < 0 ? '-' : '';
+  const absolutePaise = Math.abs(Math.trunc(paise));
+  const rupees = Math.floor(absolutePaise / 100);
+  const compact = new Intl.NumberFormat('en-IN', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(rupees);
+
+  return `${negative}₹${compact}`;
 }
 
 export function formatDelta(delta: number | null | undefined): { text: string; color: string; bg: string } {

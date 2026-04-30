@@ -3,6 +3,7 @@
 import pytest
 from decimal import Decimal
 from datetime import date
+from types import SimpleNamespace
 import pandas as pd
 
 # ── Tests for normalise.py ────────────────────────────────────
@@ -176,16 +177,16 @@ class TestRateResolution:
         df = pd.DataFrame([
             {'role': 'Data Entry', 'state': 'MH', 'seniority': 'junior',
              'effective_from': date(2025, 1, 1), 'effective_to': date(2025, 2, 28),
-             'hourly_rate_inr': 300.00, 'hourly_rate_paise': 30000},
+             'hourly_rate_inr': Decimal('300.00'), 'hourly_rate_paise': 30000},
             {'role': 'Data Entry', 'state': 'MH', 'seniority': 'junior',
              'effective_from': date(2025, 3, 1), 'effective_to': None,
-             'hourly_rate_inr': 340.00, 'hourly_rate_paise': 34000},
+             'hourly_rate_inr': Decimal('340.00'), 'hourly_rate_paise': 34000},
             {'role': 'Data Entry', 'state': 'MH', 'seniority': 'junior',
              'effective_from': date(2025, 3, 10), 'effective_to': date(2025, 3, 20),
-             'hourly_rate_inr': 320.00, 'hourly_rate_paise': 32000},
+             'hourly_rate_inr': Decimal('320.00'), 'hourly_rate_paise': 32000},
             {'role': 'Crop Inspector', 'state': 'MH', 'seniority': 'junior',
              'effective_from': date(2025, 1, 1), 'effective_to': None,
-             'hourly_rate_inr': 450.33, 'hourly_rate_paise': 45033},
+             'hourly_rate_inr': Decimal('450.33'), 'hourly_rate_paise': 45033},
         ])
         # Fill effective_to
         df['effective_to_filled'] = df['effective_to'].apply(
@@ -285,3 +286,244 @@ class TestReconciliation:
         score = compute_confidence_score(0.95, 'OK', False, False)
         # 0.4*0.95 + 0.3*1.0 + 0.2*1.0 + 0.1*1.0 = 0.38 + 0.3 + 0.2 + 0.1 = 0.98
         assert abs(score - 0.98) < 0.01
+
+
+class FakeResult:
+    def __init__(self, rows=None, scalar_value=None):
+        self._rows = rows or []
+        self._scalar_value = scalar_value
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def scalar(self):
+        return self._scalar_value
+
+
+class FakeAsyncSession:
+    def __init__(self, handlers):
+        self.handlers = handlers
+        self.inserted = []
+        self.commits = 0
+
+    async def execute(self, query, params=None):
+        sql = str(query)
+
+        if 'INSERT INTO reconciliation' in sql:
+            self.inserted.append(params)
+            return FakeResult()
+
+        for marker, result in self.handlers:
+            if marker in sql:
+                return result(params, sql) if callable(result) else result
+
+        raise AssertionError(f'Unexpected SQL: {sql}')
+
+    async def commit(self):
+        self.commits += 1
+
+
+def build_worker_and_rate_context(rate_paise: int = 10000):
+    workers_df = pd.DataFrame([
+        {
+            'worker_id': 'W0001',
+            'name': 'Ramesh Kumar',
+            'phone': '9901476797',
+            'state': 'MH',
+            'role': 'Data Entry',
+            'seniority': 'junior',
+        }
+    ])
+    rates_df = pd.DataFrame([
+        {
+            'id': 1,
+            'role': 'Data Entry',
+            'state': 'MH',
+            'seniority': 'junior',
+            'effective_from': date(2025, 1, 1),
+            'effective_to': None,
+            'effective_to_filled': date(9999, 12, 31),
+            'hourly_rate_paise': rate_paise,
+        }
+    ]).set_index('id', drop=False)
+    return workers_df, rates_df
+
+
+def build_reconciliation_session(
+    *,
+    combo_rows,
+    expected_shift_rows,
+    review_shift_rows,
+    actual_total,
+    duplicate_rows=None,
+    shift_meta=None,
+    precision_bug_count=0,
+    low_value_count=0,
+):
+    duplicate_rows = duplicate_rows or []
+    shift_meta = shift_meta or SimpleNamespace(
+        min_confidence=0.95,
+        any_tz_corrected=False,
+        any_hours_anomaly=False,
+    )
+
+    return FakeAsyncSession([
+        ('SELECT DISTINCT worker_id, billing_period', FakeResult(rows=combo_rows)),
+        ('SELECT log_id, work_date, hours, hours_anomaly, vendor_app', FakeResult(rows=expected_shift_rows)),
+        ('SELECT COALESCE(SUM(amount_paise), 0) as total', FakeResult(scalar_value=actual_total)),
+        ('GROUP BY amount_paise', FakeResult(rows=duplicate_rows)),
+        ('SELECT log_id, hours_anomaly, tz_corrected, identity_confidence', FakeResult(rows=review_shift_rows)),
+        ('SELECT COUNT(*) FROM bank_transfers', lambda params, sql: FakeResult(scalar_value=precision_bug_count if 'precision_bug = TRUE' in sql else low_value_count)),
+        ('SELECT MIN(identity_confidence) as min_confidence', FakeResult(rows=[shift_meta])),
+    ])
+
+
+class TestPipelineRuntime:
+    @pytest.mark.asyncio
+    async def test_impossible_hours(self):
+        from app.services.audit import build_shift_details
+
+        session = FakeAsyncSession([
+            ('SELECT worker_id, name, phone, state, role, seniority, registered_on', FakeResult(rows=[
+                SimpleNamespace(
+                    worker_id='W0056',
+                    name='A. Nair',
+                    phone='9413435240',
+                    state='MH',
+                    role='Crop Inspector',
+                    seniority='junior',
+                    registered_on=date(2025, 1, 1),
+                )
+            ])),
+            ('SELECT id, role, state, seniority, effective_from, effective_to, hourly_rate_paise', FakeResult(rows=[
+                SimpleNamespace(
+                    id=8,
+                    role='Crop Inspector',
+                    state='MH',
+                    seniority='junior',
+                    effective_from=date(2025, 1, 1),
+                    effective_to=None,
+                    hourly_rate_paise=45033,
+                )
+            ])),
+            ('SELECT log_id, work_date, billing_period, hours, vendor_app, supervisor_id', FakeResult(rows=[
+                SimpleNamespace(
+                    log_id='L02617',
+                    work_date=date(2025, 2, 5),
+                    billing_period='2025-02',
+                    hours=450.0,
+                    vendor_app='vendor_a_v2.3',
+                    supervisor_id='S104',
+                    tz_corrected=False,
+                    hours_anomaly=True,
+                    identity_confidence=0.7,
+                    raw_worker_name='A. Nair',
+                    raw_worker_phone='0 9413435240',
+                )
+            ])),
+        ])
+
+        shifts = await build_shift_details(session, 'W0056', '2025-02')
+        assert len(shifts) == 1
+        assert shifts[0]['hours_anomaly'] is True
+        assert shifts[0]['rate_status'] == 'IMPOSSIBLE_HOURS'
+        assert shifts[0]['expected_paise'] is None
+
+    @pytest.mark.asyncio
+    async def test_reconciliation_full(self):
+        from app.pipeline.reconcile import run_reconciliation
+
+        workers_df, rates_df = build_worker_and_rate_context(rate_paise=10000)
+        combo_rows = [SimpleNamespace(worker_id='W0001', billing_period='2025-01')]
+        expected_shift_rows = [
+            SimpleNamespace(log_id='L1', work_date=date(2025, 1, 5), hours=5, hours_anomaly=False, vendor_app='vendor_a_v2.3'),
+            SimpleNamespace(log_id='L2', work_date=date(2025, 1, 6), hours=6, hours_anomaly=False, vendor_app='vendor_a_v2.3'),
+            SimpleNamespace(log_id='L3', work_date=date(2025, 1, 7), hours=7, hours_anomaly=False, vendor_app='vendor_a_v2.3'),
+        ]
+        review_shift_rows = [
+            SimpleNamespace(log_id='L1', hours_anomaly=False, tz_corrected=False, identity_confidence=0.95, vendor_app='vendor_a_v2.3', work_date=date(2025, 1, 5), hours=5),
+            SimpleNamespace(log_id='L2', hours_anomaly=False, tz_corrected=False, identity_confidence=0.95, vendor_app='vendor_a_v2.3', work_date=date(2025, 1, 6), hours=6),
+            SimpleNamespace(log_id='L3', hours_anomaly=False, tz_corrected=False, identity_confidence=0.95, vendor_app='vendor_a_v2.3', work_date=date(2025, 1, 7), hours=7),
+        ]
+        session = build_reconciliation_session(
+            combo_rows=combo_rows,
+            expected_shift_rows=expected_shift_rows,
+            review_shift_rows=review_shift_rows,
+            actual_total=160000,
+        )
+
+        stats = await run_reconciliation('run-1', workers_df, rates_df, session)
+
+        assert stats == {'processed': 1, 'anomalies': 1}
+        assert session.commits == 1
+        assert session.inserted[0]['expected'] == 180000
+        assert session.inserted[0]['actual'] == 160000
+        assert session.inserted[0]['delta'] == -20000
+        assert session.inserted[0]['disc_type'] == 'UNDERPAYMENT'
+        assert session.inserted[0]['needs_review'] is True
+
+    @pytest.mark.asyncio
+    async def test_duplicate_payment_detection(self):
+        from app.pipeline.reconcile import run_reconciliation
+
+        workers_df, rates_df = build_worker_and_rate_context(rate_paise=10000)
+        combo_rows = [SimpleNamespace(worker_id='W0001', billing_period='2025-01')]
+        expected_shift_rows = [
+            SimpleNamespace(log_id='L1', work_date=date(2025, 1, 5), hours=10, hours_anomaly=False, vendor_app='vendor_a_v2.3'),
+        ]
+        review_shift_rows = [
+            SimpleNamespace(log_id='L1', hours_anomaly=False, tz_corrected=False, identity_confidence=0.95, vendor_app='vendor_a_v2.3', work_date=date(2025, 1, 5), hours=10),
+        ]
+        session = build_reconciliation_session(
+            combo_rows=combo_rows,
+            expected_shift_rows=expected_shift_rows,
+            review_shift_rows=review_shift_rows,
+            actual_total=150000,
+            duplicate_rows=[SimpleNamespace(amount_paise=75000, cnt=2)],
+        )
+
+        await run_reconciliation('run-dup', workers_df, rates_df, session)
+
+        assert session.inserted[0]['disc_type'] == 'DUPLICATE_PAYMENT'
+
+    @pytest.mark.asyncio
+    async def test_unmatched_work(self):
+        from app.pipeline.reconcile import run_reconciliation
+
+        workers_df, rates_df = build_worker_and_rate_context(rate_paise=10000)
+        combo_rows = [SimpleNamespace(worker_id='W0001', billing_period='2025-01')]
+        expected_shift_rows = [
+            SimpleNamespace(log_id='L1', work_date=date(2025, 1, 5), hours=8, hours_anomaly=False, vendor_app='vendor_a_v2.3'),
+        ]
+        review_shift_rows = [
+            SimpleNamespace(log_id='L1', hours_anomaly=False, tz_corrected=False, identity_confidence=0.95, vendor_app='vendor_a_v2.3', work_date=date(2025, 1, 5), hours=8),
+        ]
+        session = build_reconciliation_session(
+            combo_rows=combo_rows,
+            expected_shift_rows=expected_shift_rows,
+            review_shift_rows=review_shift_rows,
+            actual_total=0,
+        )
+
+        await run_reconciliation('run-unmatched-work', workers_df, rates_df, session)
+        assert session.inserted[0]['disc_type'] == 'UNMATCHED_WORK'
+
+    @pytest.mark.asyncio
+    async def test_unmatched_payment(self):
+        from app.pipeline.reconcile import run_reconciliation
+
+        workers_df, rates_df = build_worker_and_rate_context(rate_paise=10000)
+        combo_rows = [SimpleNamespace(worker_id='W0001', billing_period='2025-01')]
+        session = build_reconciliation_session(
+            combo_rows=combo_rows,
+            expected_shift_rows=[],
+            review_shift_rows=[],
+            actual_total=50000,
+            shift_meta=SimpleNamespace(min_confidence=None, any_tz_corrected=False, any_hours_anomaly=False),
+        )
+
+        await run_reconciliation('run-unmatched-payment', workers_df, rates_df, session)
+        assert session.inserted[0]['disc_type'] == 'UNMATCHED_PAYMENT'

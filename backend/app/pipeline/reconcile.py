@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 # ── Aggregation ──────────────────────────────────────────────
 
+def format_rupees_from_paise(paise: int) -> str:
+    """Render a paise integer as a whole-rupee string using Decimal rounding."""
+    rupees = (Decimal(str(abs(paise))) / Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return str(int(rupees))
+
 async def aggregate_expected(worker_id: str, billing_period: str, workers_df, rates_df, session: AsyncSession) -> int:
     """SUM expected_paise for all non-anomalous shifts for a worker in a period."""
     result = await session.execute(
@@ -129,9 +134,9 @@ async def build_review_reasons(
 
     # Discrepancy-based reasons
     if discrepancy_type == DiscrepancyType.UNDERPAYMENT and delta != 0:
-        reasons.append(f"UNDERPAYMENT:₹{abs(delta)/100:.0f} short")
+        reasons.append(f"UNDERPAYMENT:₹{format_rupees_from_paise(delta)} short")
     elif discrepancy_type == DiscrepancyType.OVERPAYMENT and delta != 0:
-        reasons.append(f"OVERPAYMENT:₹{abs(delta)/100:.0f} excess")
+        reasons.append(f"OVERPAYMENT:₹{format_rupees_from_paise(delta)} excess")
     elif discrepancy_type == DiscrepancyType.UNMATCHED_WORK:
         reasons.append("UNMATCHED_WORK:shifts with no payment")
     elif discrepancy_type == DiscrepancyType.UNMATCHED_PAYMENT:

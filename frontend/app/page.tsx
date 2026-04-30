@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getDashboardStats, triggerPipeline, getPipelineRun } from '@/lib/api';
-import { formatPaise, formatDelta, formatPeriod, getPriorityBadge, getTypeBadge } from '@/lib/formatters';
+import { formatPaise, formatCompactPaise, formatDelta, formatPeriod, getPriorityBadge, getTypeBadge } from '@/lib/formatters';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   PieChart, Pie, Cell
@@ -86,8 +86,8 @@ export default function Dashboard() {
 
   const barData = stats?.period_breakdown?.map((p: any) => ({
     name: formatPeriod(p.period),
-    Expected: p.expected_paise / 100,
-    Actual: p.actual_paise / 100,
+    Expected: p.expected_paise,
+    Actual: p.actual_paise,
   })) || [];
 
   const pieData = stats?.discrepancy_breakdown?.map((d: any) => ({
@@ -230,10 +230,14 @@ export default function Dashboard() {
                     <BarChart data={barData} barGap={4}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
                       <XAxis dataKey="name" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={{ stroke: '#1E293B' }} />
-                      <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={{ stroke: '#1E293B' }} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`} />
+                      <YAxis
+                        tick={{ fill: '#64748B', fontSize: 11 }}
+                        axisLine={{ stroke: '#1E293B' }}
+                        tickFormatter={(value) => formatCompactPaise(Number(value))}
+                      />
                       <Tooltip
                         contentStyle={{ background: '#1A2332', border: '1px solid #1E293B', borderRadius: '8px', color: '#F1F5F9', fontSize: '12px' }}
-                        formatter={(value: number) => [`₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, '']}
+                        formatter={(value: number) => [formatPaise(value), '']}
                       />
                       <Legend wrapperStyle={{ fontSize: '12px', color: '#94A3B8' }} />
                       <Bar dataKey="Expected" fill="#3B82F6" radius={[4, 4, 0, 0]} />
