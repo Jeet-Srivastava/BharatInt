@@ -1,7 +1,7 @@
 """Reconciliation model — one row per worker per billing period."""
 
 import uuid
-from sqlalchemy import Column, String, BigInteger, Boolean, Text, Numeric
+from sqlalchemy import BigInteger, Boolean, Column, Index, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 from sqlalchemy import UniqueConstraint, func
 from app.database import Base
@@ -17,11 +17,11 @@ class Reconciliation(Base):
     actual_paise = Column(BigInteger, nullable=True)
     delta_paise = Column(BigInteger, nullable=True)
     discrepancy_type = Column(String(30), nullable=False)
-    needs_manual_review = Column(Boolean, default=False)
+    needs_manual_review = Column(Boolean, default=False, server_default=text("FALSE"))
     review_reason = Column(Text, nullable=True)
     priority = Column(String(5), nullable=True)
     confidence_score = Column(Numeric(4, 3), nullable=True)
-    resolved = Column(Boolean, default=False)
+    resolved = Column(Boolean, default=False, server_default=text("FALSE"))
     resolved_by = Column(String(100), nullable=True)
     resolved_at = Column(TIMESTAMP(timezone=True), nullable=True)
     resolution_notes = Column(Text, nullable=True)
@@ -30,4 +30,6 @@ class Reconciliation(Base):
 
     __table_args__ = (
         UniqueConstraint("worker_id", "billing_period", "pipeline_run_id"),
+        Index("ix_reconciliation_review_priority", "needs_manual_review", "priority"),
+        Index("ix_reconciliation_worker_billing_period", "worker_id", "billing_period"),
     )

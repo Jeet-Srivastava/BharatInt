@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
+from app.core.schema import ensure_schema_hardening
 from app.models import *  # noqa: F401 — import all models for table creation
 from app.api.pipeline import router as pipeline_router
 from app.api.reconciliation import router as reconciliation_router
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     # Create tables if not exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_schema_hardening(conn)
     logger.info("Database tables created/verified")
     yield
     # Shutdown

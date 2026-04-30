@@ -28,7 +28,7 @@ async def aggregate_expected(worker_id: str, billing_period: str, workers_df, ra
             SELECT log_id, work_date, hours, hours_anomaly, vendor_app
             FROM shift_logs
             WHERE worker_id = :worker_id
-              AND to_char(work_date, 'YYYY-MM') = :billing_period
+              AND billing_period = :billing_period
               AND hours_anomaly = FALSE
         """),
         {'worker_id': worker_id, 'billing_period': billing_period}
@@ -132,7 +132,7 @@ async def build_review_reasons(
                    vendor_app, work_date, hours
             FROM shift_logs
             WHERE worker_id = :worker_id
-              AND to_char(work_date, 'YYYY-MM') = :billing_period
+              AND billing_period = :billing_period
         """),
         {'worker_id': worker_id, 'billing_period': billing_period}
     )
@@ -273,7 +273,7 @@ async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session
     # Get all (worker_id, billing_period) combinations from shift_logs UNION bank_transfers
     result = await session.execute(
         text("""
-            SELECT DISTINCT worker_id, to_char(work_date, 'YYYY-MM') as billing_period
+            SELECT DISTINCT worker_id, billing_period
             FROM shift_logs
             WHERE worker_id IS NOT NULL
             UNION
@@ -317,7 +317,7 @@ async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session
                        BOOL_OR(hours_anomaly) as any_hours_anomaly
                 FROM shift_logs
                 WHERE worker_id = :worker_id
-                  AND to_char(work_date, 'YYYY-MM') = :billing_period
+                  AND billing_period = :billing_period
             """),
             {'worker_id': worker_id, 'billing_period': billing_period}
         )

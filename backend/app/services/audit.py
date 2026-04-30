@@ -110,12 +110,12 @@ async def build_shift_details(
     where_period = ""
     params: dict[str, str] = {"worker_id": worker_id}
     if billing_period:
-        where_period = "AND to_char(work_date, 'YYYY-MM') = :billing_period"
+        where_period = "AND billing_period = :billing_period"
         params["billing_period"] = billing_period
 
     result = await session.execute(
         text(f"""
-            SELECT log_id, work_date, hours, vendor_app, supervisor_id,
+            SELECT log_id, work_date, billing_period, hours, vendor_app, supervisor_id,
                    tz_corrected, hours_anomaly, identity_confidence,
                    raw_worker_name, raw_worker_phone
             FROM shift_logs

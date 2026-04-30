@@ -1,6 +1,6 @@
 """WageRate model — effective-dated hourly rates stored in paise."""
 
-from sqlalchemy import Column, Integer, String, Date, BigInteger
+from sqlalchemy import BigInteger, Column, Date, Integer, String, UniqueConstraint
 from app.database import Base
 
 
@@ -14,3 +14,7 @@ class WageRate(Base):
     effective_from = Column(Date, nullable=False)
     effective_to = Column(Date, nullable=True)  # NULL = open-ended (treat as 9999-12-31)
     hourly_rate_paise = Column(BigInteger, nullable=False)  # stored in paise, not INR
+
+    __table_args__ = (
+        UniqueConstraint("role", "state", "seniority", "effective_from", name="uq_wage_rates_effective_from"),
+    )

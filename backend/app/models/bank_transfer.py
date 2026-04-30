@@ -1,6 +1,6 @@
 """BankTransfer model — normalised payment records."""
 
-from sqlalchemy import Column, String, Date, BigInteger, Boolean
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, Index, String
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 from app.database import Base
 
@@ -18,3 +18,8 @@ class BankTransfer(Base):
     account_last4 = Column(String(4), nullable=True)
     precision_bug = Column(Boolean, default=False)
     pipeline_run_id = Column(UUID(as_uuid=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("amount_paise > 0", name="ck_bank_transfers_amount_positive"),
+        Index("ix_bank_transfers_worker_billing_period", "worker_id", "billing_period"),
+    )
