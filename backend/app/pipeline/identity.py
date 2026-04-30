@@ -22,6 +22,7 @@ def resolve_identity(raw_phone: str, raw_name: str, workers_df) -> dict:
             'worker_id': None,
             'confidence': 0.0,
             'name_similarity': 0.0,
+            'normalised_phone': None,
             'status': 'UNRESOLVABLE_PHONE'
         }
 
@@ -32,6 +33,7 @@ def resolve_identity(raw_phone: str, raw_name: str, workers_df) -> dict:
             'worker_id': None,
             'confidence': 0.0,
             'name_similarity': 0.0,
+            'normalised_phone': norm_phone,
             'status': 'PHONE_NOT_IN_REGISTRY'
         }
 
@@ -56,5 +58,6 @@ def resolve_identity(raw_phone: str, raw_name: str, workers_df) -> dict:
         'worker_id': worker['worker_id'],
         'confidence': round(confidence, 3),
         'name_similarity': round(name_score, 3),
+        'normalised_phone': norm_phone,
         'status': 'RESOLVED' if confidence >= 0.7 else 'LOW_CONFIDENCE'
     }

@@ -1,6 +1,7 @@
 """Celery worker — async pipeline orchestration."""
 
 import logging
+from time import perf_counter
 
 from celery import Celery
 from sqlalchemy import create_engine, text
@@ -8,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import REDIS_URL, DATABASE_URL, DATABASE_URL_SYNC
+from app.core.logging_utils import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +64,33 @@ def run_pipeline_task(self, run_id: str):
                 logger.info(f"Pipeline {run_id}: Loading CSVs...")
 
                 # 2. Load CSVs
+                load_started = perf_counter()
                 workers_df = load_workers()
                 rates_df = load_wage_rates()
                 logs_df = load_supervisor_logs()
                 transfers_df = load_bank_transfers()
+                log_structured(
+                    logger,
+                    'pipeline_step',
+                    step_name='load_csvs',
+                    rows_processed=len(workers_df) + len(rates_df) + len(logs_df) + len(transfers_df),
+                    errors_count=0,
+                    duration_ms=round((perf_counter() - load_started) * 1000, 2),
+                )
 
                 # 3. Ingest workers and rates
                 logger.info(f"Pipeline {run_id}: Ingesting workers and rates...")
+                reference_started = perf_counter()
                 await ingest_workers_to_db(workers_df, session)
                 await ingest_wage_rates_to_db(rates_df, session)
+                log_structured(
+                    logger,
+                    'pipeline_step',
+                    step_name='ingest_reference_data',
+                    rows_processed=len(workers_df) + len(rates_df),
+                    errors_count=0,
+                    duration_ms=round((perf_counter() - reference_started) * 1000, 2),
+                )
 
                 # 4. Process supervisor logs
                 logger.info(f"Pipeline {run_id}: Processing supervisor logs...")
@@ -86,7 +106,7 @@ def run_pipeline_task(self, run_id: str):
 
                 # 6. Run reconciliation
                 logger.info(f"Pipeline {run_id}: Running reconciliation...")
-                anomalies = await run_reconciliation(run_id, workers_df, rates_df, session)
+                reconciliation_stats = await run_reconciliation(run_id, workers_df, rates_df, session)
 
                 # 7. Update pipeline run as completed
                 await session.execute(
@@ -103,13 +123,13 @@ def run_pipeline_task(self, run_id: str):
                         'run_id': run_id,
                         'rows_logs': log_stats['processed'],
                         'rows_transfers': transfer_stats['processed'],
-                        'anomalies': anomalies,
+                        'anomalies': reconciliation_stats['anomalies'],
                     }
                 )
                 await session.commit()
 
                 logger.info(f"Pipeline {run_id}: COMPLETED. Logs={log_stats['processed']}, "
-                           f"Transfers={transfer_stats['processed']}, Anomalies={anomalies}")
+                           f"Transfers={transfer_stats['processed']}, Anomalies={reconciliation_stats['anomalies']}")
 
             except Exception as e:
                 logger.error(f"Pipeline {run_id}: FAILED — {str(e)}")

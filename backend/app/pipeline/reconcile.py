@@ -5,6 +5,7 @@ Reconciliation happens at the (worker_id, billing_period) level.
 
 import logging
 from decimal import Decimal, ROUND_HALF_UP
+from time import perf_counter
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.core.constants import (
     NEAR_MATCH_THRESHOLD, LARGE_DISCREPANCY_THRESHOLD,
     MAX_HOURS_PER_SHIFT
 )
+from app.core.logging_utils import log_structured
 from app.pipeline.rates import resolve_rate, calculate_expected_paise
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,16 @@ async def aggregate_expected(worker_id: str, billing_period: str, workers_df, ra
     total_expected = 0
     for row in rows:
         rate_info = resolve_rate(worker_id, row.work_date, workers_df, rates_df)
+        log_structured(
+            logger,
+            'rate_resolution',
+            log_id=row.log_id,
+            worker_id=worker_id,
+            work_date=row.work_date,
+            rate_row_id=rate_info.get('rate_row_id'),
+            rate_paise=rate_info.get('rate_paise'),
+            status=rate_info['status'],
+        )
         if rate_info['status'] == 'OK' and rate_info['rate_paise'] is not None:
             expected = calculate_expected_paise(row.hours, rate_info['rate_paise'])
             total_expected += expected
@@ -265,11 +277,12 @@ def set_manual_review_flag(
 
 # ── Full Reconciliation Runner ───────────────────────────────
 
-async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session: AsyncSession) -> int:
+async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session: AsyncSession) -> dict:
     """Run full reconciliation for all (worker_id, billing_period) combinations.
 
-    Returns count of anomalies found.
+    Returns reconciliation stats for the pipeline run.
     """
+    started = perf_counter()
     # Get all (worker_id, billing_period) combinations from shift_logs UNION bank_transfers
     result = await session.execute(
         text("""
@@ -394,5 +407,12 @@ async def run_reconciliation(pipeline_run_id: str, workers_df, rates_df, session
         )
 
     await session.commit()
-    logger.info(f"Reconciliation complete. {len(combinations)} combinations processed. {anomalies_count} anomalies.")
-    return anomalies_count
+    log_structured(
+        logger,
+        'pipeline_step',
+        step_name='run_reconciliation',
+        rows_processed=len(combinations),
+        errors_count=anomalies_count,
+        duration_ms=round((perf_counter() - started) * 1000, 2),
+    )
+    return {'processed': len(combinations), 'anomalies': anomalies_count}

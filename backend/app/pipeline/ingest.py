@@ -7,12 +7,14 @@ and upserting into the database.
 import logging
 from decimal import Decimal
 from datetime import date
+from time import perf_counter
 
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import BILLING_PERIOD_FORMAT, DATA_DIR
+from app.core.logging_utils import log_structured
 from app.core.constants import MAX_HOURS_PER_SHIFT
 from app.pipeline.normalise import normalise_phone, derive_work_date, normalise_timestamp, validate_hours
 from app.pipeline.identity import resolve_identity
@@ -164,6 +166,7 @@ async def process_supervisor_logs(
 
     Returns stats dict with counts.
     """
+    started = perf_counter()
     stats = {
         'total': len(logs_df),
         'processed': 0,
@@ -187,6 +190,15 @@ async def process_supervisor_logs(
         identity = resolve_identity(raw_phone, raw_name, workers_df)
         worker_id = identity['worker_id']
         identity_confidence = identity['confidence']
+        log_structured(
+            logger,
+            'identity_resolution',
+            log_id=log_id,
+            raw_phone=raw_phone,
+            normalised_phone=identity.get('normalised_phone'),
+            worker_id=worker_id,
+            confidence=identity_confidence,
+        )
 
         # 2. Timezone normalisation + work_date derivation
         corrected_work_date, tz_corrected = derive_work_date(raw_entered_at, raw_work_date, vendor_app)
@@ -261,7 +273,14 @@ async def process_supervisor_logs(
         stats['processed'] += 1
 
     await session.commit()
-    logger.info(f"Processed {stats['processed']} supervisor logs. Anomalies: {stats['anomalies']}")
+    log_structured(
+        logger,
+        'pipeline_step',
+        step_name='process_supervisor_logs',
+        rows_processed=stats['processed'],
+        errors_count=stats['anomalies'] + stats['unresolvable_phone'],
+        duration_ms=round((perf_counter() - started) * 1000, 2),
+    )
     return stats
 
 
@@ -275,6 +294,7 @@ async def process_bank_transfers(
 
     Returns stats dict.
     """
+    started = perf_counter()
     stats = {
         'total': len(transfers_df),
         'processed': 0,
@@ -359,5 +379,12 @@ async def process_bank_transfers(
         stats['processed'] += 1
 
     await session.commit()
-    logger.info(f"Processed {stats['processed']} bank transfers. Precision bugs: {stats['precision_bugs']}")
+    log_structured(
+        logger,
+        'pipeline_step',
+        step_name='process_bank_transfers',
+        rows_processed=stats['processed'],
+        errors_count=stats['precision_bugs'] + stats['low_value'] + stats['unresolvable_phone'],
+        duration_ms=round((perf_counter() - started) * 1000, 2),
+    )
     return stats
