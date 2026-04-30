@@ -362,10 +362,10 @@
   - [DONE] STEP-047c: Add DB CHECK constraint: shift_logs.hours > 0 AND shift_logs.hours <= 16 (allow anomaly rows via separate flag, not by allowing 450)
   - [DONE] STEP-047d: Add DB CHECK constraint: bank_transfers.amount_paise > 0
 
-- [ ] STEP-048: Add structured logging
-  - [ ] STEP-048a: Every pipeline step logs: step_name, rows_processed, errors_count, duration_ms
-  - [ ] STEP-048b: Every identity resolution logs: log_id, raw_phone, normalised_phone, worker_id, confidence
-  - [ ] STEP-048c: Every rate resolution logs: log_id, worker_id, work_date, rate_row_id, rate_paise, status
+- [DONE] STEP-048: Add structured logging
+  - [DONE] STEP-048a: Every pipeline step logs: step_name, rows_processed, errors_count, duration_ms
+  - [DONE] STEP-048b: Every identity resolution logs: log_id, raw_phone, normalised_phone, worker_id, confidence
+  - [DONE] STEP-048c: Every rate resolution logs: log_id, worker_id, work_date, rate_row_id, rate_paise, status
 
 - [ ] STEP-049: Write remaining backend unit tests
   - [ ] STEP-049a: test_impossible_hours: log with 450h → excluded from expected, flagged
