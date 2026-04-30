@@ -327,23 +327,23 @@
 
 ## PHASE 14 — INTEGRATION & END-TO-END TEST
 
-- [ ] STEP-045: End-to-end integration test
-  - [ ] STEP-045a: Upload all 4 CSVs to /data/samples
-  - [ ] STEP-045b: Trigger pipeline via POST /api/v1/pipeline/run
-  - [ ] STEP-045c: Wait for status = 'completed'
-  - [ ] STEP-045d: Verify: 100 workers in DB
-  - [ ] STEP-045e: Verify: 2617 shift_log rows in DB (including the 450h anomaly row, flagged)
-  - [ ] STEP-045f: Verify: 2255 bank_transfer rows in DB
-  - [ ] STEP-045g: Verify: reconciliation table has rows for every (worker, period) combination
-  - [ ] STEP-045h: Verify: log L02617 (450h shift) is marked hours_anomaly=True and excluded from expected_paise
-  - [ ] STEP-045i: Verify: all 8 vendor_b entries have tz_corrected=True
-  - [ ] STEP-045j: Verify: Data Entry MH junior shifts on 2025-03-15 use rate 340 INR/h (not 320)
-  - [ ] STEP-045k: Verify: Crop Inspector MH junior 7.5h shift → expected_paise = 337748 (not 337747)
-  - [ ] STEP-045l: Verify: GET /api/v1/stats/summary?period=2025-01 returns non-zero values
-  - [ ] STEP-045m: Verify: GET /api/v1/reconciliation?needs_review=true returns records
-  - [ ] STEP-045n: Open browser to localhost:3000 — dashboard loads with data
-  - [ ] STEP-045o: Review queue shows flagged records
-  - [ ] STEP-045p: Worker drilldown for W0001 shows shifts and transfers
+- [DONE] STEP-045: End-to-end integration test
+  - [DONE] STEP-045a: Upload all 4 CSVs to /data/samples
+  - [DONE] STEP-045b: Trigger pipeline via POST /api/v1/pipeline/run
+  - [DONE] STEP-045c: Wait for status = 'completed'
+  - [DONE] STEP-045d: Verify: 100 workers in DB
+  - [DONE] STEP-045e: Verify: 2617 shift_log rows in DB (including the 450h anomaly row, flagged)
+  - [DONE] STEP-045f: Verify: 2255 bank_transfer rows in DB
+  - [DONE] STEP-045g: Verify: reconciliation table has rows for every (worker, period) combination
+  - [DONE] STEP-045h: Verify: log L02617 (450h shift) is marked hours_anomaly=True and excluded from expected_paise
+  - [DONE] STEP-045i: Verify: all 8 vendor_b entries have tz_corrected=True
+  - [DONE] STEP-045j: Verify: Data Entry MH junior shifts on 2025-03-15 use rate 340 INR/h (not 320)
+  - [DONE] STEP-045k: Verify: Crop Inspector MH junior 7.5h shift → expected_paise = 337748 (not 337747)
+  - [DONE] STEP-045l: Verify: GET /api/v1/stats/summary?period=2025-01 returns non-zero values
+  - [DONE] STEP-045m: Verify: GET /api/v1/reconciliation?needs_review=true returns records
+  - [DONE] STEP-045n: Open browser to localhost:3000 — dashboard loads with data
+  - [DONE] STEP-045o: Review queue shows flagged records
+  - [DONE] STEP-045p: Worker drilldown for W0001 shows shifts and transfers
 
 ---
 
